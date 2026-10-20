@@ -1,0 +1,39 @@
+# Секреты и локальные настройки
+.env
+
+# Локальная база приложения (создаётся автоматически)
+data/jobs.json
+data/update_status.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Временные диагностические файлы
+_diag.py
+_diag2.py
+*.diag.py
+diag*.py
+
+# Случайные медиафайлы в корне проекта (не используются в приложении)
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.heic
+*.heif
+
+# Разрешить изображения, используемые приложением в static/
+!static/**/*.jpg
+!static/**/*.jpeg
+!static/**/*.png
+!static/**/*.webp
+!static/**/*.gif
+!static/**/*.svg
+!static/**/*.ico
+!static/**/*.heic
+!static/**/*.heif
+

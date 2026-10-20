@@ -1,0 +1,5 @@
+# Зависимости проекта Signal — AI Job Digest
+# Установка:  python -m pip install -r requirements.txt
+
+Flask>=3.0
+python-dotenv>=1.0

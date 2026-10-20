@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Страница не найдена — Signal{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="container narrow">
+    <p class="eyebrow">404 / Помеха</p>
+    <h1 class="section__title">Сигнал не найден</h1>
+    <p class="section__sub">
+      {{ message|default("Такой страницы нет: возможно, ссылка устарела или в адресе опечатка.") }}
+    </p>
+    <a class="btn btn--primary" href="{{ url_for('index') }}">Вернуться на главную</a>
+  </div>
+</section>
+{% endblock %}

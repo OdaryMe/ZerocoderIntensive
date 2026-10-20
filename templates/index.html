@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- ================= Первый экран ================= -->
+<section class="hero">
+  <div class="container hero__grid">
+    <div class="hero__text">
+      <p class="eyebrow">00 / AI-радар карьеры</p>
+      <h1 class="hero__title">
+        Поймай свой<br>
+        <em>сигнал</em> в потоке<br>
+        AI-вакансий
+      </h1>
+      <p class="hero__lead">
+        Signal собирает вакансии вайб-кодинга, промпт-инжиниринга,
+        AI-автоматизации и смежных направлений в одну ленту, отсекает шум
+        и показывает, куда движется рынок.
+      </p>
+
+      <div class="hero__actions">
+        <a class="btn btn--primary" href="#jobs">Смотреть вакансии</a>
+        <a class="btn btn--ghost" href="#digest">Открыть дайджест</a>
+      </div>
+
+      <!-- Статистика считается по реальным данным приложения -->
+      <dl class="hero__stats">
+        <div class="stat">
+          <dd class="stat__value mono">{{ stats.total }}</dd>
+          <dt class="stat__label">вакансий в базе</dt>
+        </div>
+        <div class="stat">
+          <dd class="stat__value mono">{{ stats.directions }}</dd>
+          <dt class="stat__label">направлений поиска</dt>
+        </div>
+        <div class="stat">
+          <dd class="stat__value mono">{{ stats.new }}</dd>
+          <dt class="stat__label">новых за {{ 3 }} дня</dt>
+        </div>
+        <div class="stat">
+          <dd class="stat__value stat__value--small mono">{{ stats.last_success|dt('%d.%m · %H:%M') }}</dd>
+          <dt class="stat__label">последнее обновление</dt>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Анимированный AI-радар (см. static/js/radar.js) -->
+    <div class="hero__radar">
+      <div class="radar-frame">
+        <canvas id="radarCanvas" width="460" height="460"
+                role="img" aria-label="Радар направлений поиска"></canvas>
+        <span class="radar-frame__corner radar-frame__corner--tl"></span>
+        <span class="radar-frame__corner radar-frame__corner--br"></span>
+      </div>
+      <p class="radar-caption mono">
+        сканирую {{ stats.directions }} направлений · сигналов: {{ stats.total }}
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Лента вакансий ================= -->
+<section class="section" id="jobs">
+  <div class="container">
+    <header class="section__head">
+      <p class="eyebrow">01 / Лента</p>
+      <h2 class="section__title">Свежие вакансии</h2>
+      <p class="section__sub">
+        Поиск по названию, компании, описанию и навыкам. Фильтры меняют выдачу
+        сразу, сортировка — по дате обнаружения, публикации, зарплате
+        или соответствию вашим критериям.
+      </p>
+    </header>
+
+    {% if stats.demo %}
+    <!-- Честное предупреждение о тестовых данных -->
+    <aside class="notice notice--demo">
+      <span class="tag tag--demo">ДЕМО</span>
+      <p>
+        Сейчас в ленте <strong>тестовые записи</strong>, придуманные для
+        демонстрации интерфейса. Они помечены бейджем «ДЕМО» и не являются
+        реальными вакансиями. Как подключить настоящие источники —
+        <a href="#sources">в разделе «Источники»</a>.
+        {% if feeds %} RSS-лент подключено: <strong>{{ feeds|length }}</strong> — нажмите «Обновить данные».{% endif %}
+      </p>
+    </aside>
+    {% endif %}
+
+    <!-- Панель управления выдачей -->
+    <div class="toolbar">
+      <div class="search">
+        <svg class="search__icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <input type="search" id="searchInput" placeholder="Должность, компания, навык…"
+               aria-label="Поиск по вакансиям" autocomplete="off">
+      </div>
+
+      <div class="toolbar__controls">
+        <label class="field field--inline">
+          <span class="field__label">Сортировка</span>
+          <select id="sortSelect">
+            <option value="detected">По дате обнаружения</option>
+            <option value="published">По дате публикации</option>
+            <option value="salary">По зарплате (номинал)</option>
+            <option value="relevance">По соответствию критериям</option>
+          </select>
+        </label>
+
+        <button class="btn btn--ghost btn--small" type="button" id="filtersToggle" aria-expanded="false" aria-controls="filtersPanel">
+          Фильтры <span class="pill" id="filtersCount" hidden>0</span>
+        </button>
+        <button class="btn btn--ghost btn--small" type="button" id="refreshBtn">Обновить данные</button>
+        <a class="btn btn--ghost btn--small" id="exportLink" href="/api/export.csv">CSV</a>
+      </div>
+    </div>
+
+    <!-- Строка результатов и выбранные фильтры -->
+    <div class="results-bar">
+      <p class="results-count" id="resultsCount" aria-live="polite">Загружаю вакансии…</p>
+      <div class="active-filters" id="activeFilters"></div>
+      <button class="btn-text btn-text--danger" type="button" id="resetBtn" hidden>Сбросить фильтры ✕</button>
+    </div>
+
+    <div class="jobs-layout">
+      <!-- ---------- Фильтры ---------- -->
+      <aside class="filters" id="filtersPanel" aria-label="Фильтры вакансий">
+
+        <details class="filter-group" open>
+          <summary>Направление</summary>
+          <div class="filter-group__body">
+            <ul class="check-list">
+              {% for direction in directions %}
+              <li>
+                <label class="check">
+                  <input type="checkbox" name="direction" value="{{ direction.id }}">
+                  <span class="check__box"></span>
+                  <span class="check__label">
+                    <span class="dot" style="--dot: {{ direction.color }}"></span>
+                    {{ direction.label }}
+                  </span>
+                  <span class="count mono" data-count-for="direction:{{ direction.id }}">0</span>
+                </label>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </details>
+
+        <details class="filter-group" open>
+          <summary>Уровень</summary>
+          <div class="filter-group__body">
+            <div class="chip-group">
+              {% for level in levels %}
+              <label class="chip">
+                <input type="checkbox" name="level" value="{{ level.id }}">
+                <span>{{ level.label }}</span>
+                <span class="count mono" data-count-for="level:{{ level.id }}">0</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+
+        <details class="filter-group" open>
+          <summary>Формат работы</summary>
+          <div class="filter-group__body">
+            <div class="chip-group">
+              {% for format in formats %}
+              <label class="chip">
+                <input type="checkbox" name="work_format" value="{{ format.id }}">
+                <span>{{ format.label }}</span>
+                <span class="count mono" data-count-for="work_format:{{ format.id }}">0</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+
+        <details class="filter-group">
+          <summary>Страна или регион</summary>
+          <div class="filter-group__body">
+            <label class="field">
+              <span class="field__label">Страна / регион</span>
+              <select id="countrySelect" name="country">
+                <option value="">Все страны</option>
+              </select>
+            </label>
+          </div>
+        </details>
+
+        <details class="filter-group">
+          <summary>Занятость</summary>
+          <div class="filter-group__body">
+            <label class="field">
+              <span class="field__label">Тип занятости</span>
+              <select name="employment">
+                <option value="">Любой</option>
+                {% for employment in employments %}
+                <option value="{{ employment.id }}">{{ employment.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </details>
+
+        <details class="filter-group">
+          <summary>Зарплата</summary>
+          <div class="filter-group__body">
+            <div class="field-row">
+              <label class="field">
+                <span class="field__label">Не меньше</span>
+                <input type="number" name="salary_min" min="0" step="100" placeholder="Например, 5000" inputmode="numeric">
+              </label>
+              <label class="field">
+                <span class="field__label">Валюта</span>
+                <select name="salary_currency">
+                  <option value="">Любая</option>
+                  {% for currency in currencies %}
+                  <option value="{{ currency }}">{{ currency }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <p class="hint">Суммы сравниваются без пересчёта курсов: выберите валюту, чтобы фильтр был точным.</p>
+          </div>
+        </details>
+
+        <details class="filter-group">
+          <summary>Дата и статус</summary>
+          <div class="filter-group__body">
+            <label class="field">
+              <span class="field__label">Опубликованы за период</span>
+              <select name="days">
+                <option value="">За всё время</option>
+                <option value="1">Последние 24 часа</option>
+                <option value="3">3 дня</option>
+                <option value="7">7 дней</option>
+                <option value="14">14 дней</option>
+                <option value="30">30 дней</option>
+                <option value="90">90 дней</option>
+              </select>
+            </label>
+            <label class="check check--standalone">
+              <input type="checkbox" name="new">
+              <span class="check__box"></span>
+              <span class="check__label">Только новые <span class="muted">(обнаружены за 3 дня)</span></span>
+            </label>
+            <label class="check check--standalone">
+              <input type="checkbox" name="fav">
+              <span class="check__box"></span>
+              <span class="check__label">Только избранное <span class="muted" id="favCounter">(0)</span></span>
+            </label>
+          </div>
+        </details>
+
+        <!-- Пользовательские критерии: оценка соответствия -->
+        <details class="filter-group filter-group--criteria" id="criteriaPanel">
+          <summary>
+            Мои критерии
+            <span class="pill pill--off" id="criteriaBadge">выкл</span>
+          </summary>
+          <div class="filter-group__body">
+            <p class="hint">
+              Оценка соответствия считается по прозрачным правилам:
+              приоритетное направление, совпавшие навыки и порог зарплаты.
+              Рядом с процентом всегда видно, из чего он сложился.
+            </p>
+
+            <fieldset class="fieldset">
+              <legend>Приоритетные направления</legend>
+              <div class="check-list check-list--compact">
+                {% for direction in directions %}
+                <label class="check">
+                  <input type="checkbox" name="criteria_direction" value="{{ direction.id }}">
+                  <span class="check__box"></span>
+                  <span class="check__label">
+                    <span class="dot" style="--dot: {{ direction.color }}"></span>
+                    {{ direction.short }}
+                  </span>
+                </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+
+            <label class="field">
+              <span class="field__label">Желаемые навыки через запятую</span>
+              <input type="text" id="criteriaSkills" placeholder="Python, промпт, RAG" autocomplete="off">
+            </label>
+
+            <label class="field">
+              <span class="field__label">Минимальная зарплата в месяц</span>
+              <input type="number" id="criteriaSalary" min="0" step="100" placeholder="Например, 4000" inputmode="numeric">
+            </label>
+
+            <div class="criteria__actions">
+              <button class="btn btn--primary btn--small" type="button" id="criteriaApply">Применить</button>
+              <button class="btn-text" type="button" id="criteriaClear">Очистить</button>
+            </div>
+          </div>
+        </details>
+
+        <button class="btn btn--ghost btn--full" type="button" id="resetFiltersSide">Сбросить все фильтры</button>
+        <button class="btn btn--ghost btn--full" type="button" id="showHiddenBtn" hidden>Показать скрытые</button>
+      </aside>
+
+      <!-- ---------- Список вакансий ---------- -->
+      <div class="feed">
+        <div class="jobs-list" id="jobsList" aria-busy="true"></div>
+
+        <!-- Состояние пустой выдачи -->
+        <div class="empty-state" id="emptyState" hidden>
+          <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
+            <circle cx="60" cy="60" r="30" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="1"/>
+            <circle cx="60" cy="60" r="14" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+            <path d="M60 60 L60 14" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round" opacity=".7"/>
+            <circle cx="86" cy="42" r="3" fill="#8b5cf6"/>
+            <circle cx="38" cy="80" r="2.5" fill="#a3e635" opacity=".8"/>
+          </svg>
+          <h3>Сигналов не найдено</h3>
+          <p>Под заданные условия не подошла ни одна вакансия.
+             Попробуйте ослабить фильтры или изменить запрос.</p>
+          <button class="btn btn--primary" type="button" id="emptyResetBtn">Сбросить фильтры</button>
+        </div>
+
+        <!-- Состояние ошибки загрузки -->
+        <div class="empty-state empty-state--error" id="errorState" hidden>
+          <h3>Не удалось загрузить вакансии</h3>
+          <p id="errorMessage">Сервер не ответил. Проверьте, что приложение запущено.</p>
+          <button class="btn btn--primary" type="button" id="retryBtn">Повторить</button>
+        </div>
+
+        <button class="btn btn--ghost btn--full" type="button" id="loadMoreBtn" hidden>Показать ещё</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= AI-дайджест ================= -->
+<section class="section section--digest" id="digest">
+  <div class="container">
+    <header class="section__head section__head--row">
+      <div>
+        <p class="eyebrow">02 / Дайджест</p>
+        <h2 class="section__title">Пульс рынка</h2>
+        <p class="section__sub">
+          Аналитика считается локально по данным приложения: счётчики,
+          частотность и диапазоны — это обычный код, а не «мнение нейросети».
+        </p>
+      </div>
+
+      <label class="field field--inline">
+        <span class="field__label">Период</span>
+        <select id="digestPeriod">
+          {% for days in period_options %}
+          <option value="{{ days }}" {% if days == 7 %}selected{% endif %}>
+            {{ '24 часа' if days == 1 else days ~ ' дней' }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+    </header>
+
+    <div class="digest-grid" id="digestGrid" aria-busy="true">
+      <!-- Колонка 1: новые вакансии -->
+      <article class="digest-card digest-card--hero" id="digestHero">
+        <p class="eyebrow">Новых вакансий</p>
+        <div class="skeleton skeleton--big"></div>
+      </article>
+
+      <!-- Частые навыки -->
+      <article class="digest-card" id="digestSkills">
+        <p class="eyebrow">Частые навыки</p>
+        <div class="skeleton"></div>
+      </article>
+
+      <!-- Направления -->
+      <article class="digest-card" id="digestDirections">
+        <p class="eyebrow">Востребованные направления</p>
+        <div class="skeleton"></div>
+      </article>
+
+      <!-- Зарплаты -->
+      <article class="digest-card" id="digestSalaries">
+        <p class="eyebrow">Зарплатные диапазоны</p>
+        <div class="skeleton"></div>
+      </article>
+
+      <!-- Интересные вакансии -->
+      <article class="digest-card digest-card--wide" id="digestInteresting">
+        <p class="eyebrow">Обнаружены недавно</p>
+        <div class="skeleton"></div>
+      </article>
+
+      <!-- AI-резюме -->
+      <article class="digest-card digest-card--ai" id="digestAi">
+        <p class="eyebrow">AI-резюме</p>
+        {% if ai.configured %}
+        <p class="hint">Короткий пересказ новых вакансий от модели.
+          Данные выше уже посчитаны локально — модель только пересказывает их.</p>
+        <button class="btn btn--primary btn--small" type="button" id="aiBtn">Сформировать резюме</button>
+        <div class="ai-result" id="aiResult" hidden></div>
+        {% else %}
+        <p class="ai-off">
+          Текстовое AI-резюме <strong>не настроено</strong> — и это честно:
+          аналитика выше работает без нейросети. Чтобы включить резюме,
+          задайте <code>AI_API_KEY</code> и <code>AI_API_URL</code>
+          в файле <code>.env</code> (инструкция в README) и перезапустите приложение.
+        </p>
+        {% endif %}
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Источники ================= -->
+<section class="section" id="sources">
+  <div class="container">
+    <header class="section__head">
+      <p class="eyebrow">03 / Источники</p>
+      <h2 class="section__title">Откуда берутся данные</h2>
+      <p class="section__sub">
+        Достоверность — главный принцип проекта: у каждой записи известен
+        источник, даты и идентификатор для дедупликации.
+      </p>
+    </header>
+
+    <div class="sources-grid">
+      <!-- Текущий статус -->
+      <article class="panel">
+        <h3 class="panel__title">Статус данных</h3>
+        <dl class="kv">
+          <dt>Режим</dt>
+          <dd>{% if mode == 'demo+rss' %}демо + RSS{% else %}демонстрационный{% endif %}</dd>
+          <dt>Последняя попытка</dt>
+          <dd class="mono">{{ status.last_attempt|dt('%d.%m.%Y %H:%M:%S') }}</dd>
+          <dt>Последнее успешное обновление</dt>
+          <dd class="mono">{{ status.last_success|dt('%d.%m.%Y %H:%M:%S') }}</dd>
+          <dt>Записей в базе</dt>
+          <dd class="mono">{{ status.total_jobs if status.total_jobs is not none else stats.total }}</dd>
+        </dl>
+        <p class="hint">{{ status.note }}</p>
+
+        <ul class="source-list" id="sourceList">
+          {% for source in status.sources %}
+          <li class="source-item {% if source.ok %}is-ok{% else %}is-error{% endif %}">
+            <span class="source-item__dot"></span>
+            <div class="source-item__body">
+              <p class="source-item__name">
+                {{ source.name }}
+                {% if source.kind == 'demo' %}<span class="tag tag--demo">ДЕМО</span>{% endif %}
+              </p>
+              <p class="source-item__meta mono">
+                {% if source.ok %}
+                  проверено: {{ source.checked }} · новых: {{ source.added }}
+                  {% if source.note %}· {{ source.note }}{% endif %}
+                {% else %}
+                  ошибка: {{ source.error }}
+                {% endif %}
+              </p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <button class="btn btn--primary btn--full" type="button" id="refreshBtnSecondary">Обновить данные</button>
+      </article>
+
+      <!-- Как это работает -->
+      <article class="panel">
+        <h3 class="panel__title">Как подключить реальные источники</h3>
+        <ol class="steps">
+          <li>
+            <strong>RSS/Atom-ленты.</strong> Адреса вакансий или анонсов
+            вписывают в переменную <code>SIGNAL_FEEDS</code> в файле
+            <code>.env</code> (через запятую) и перезапускают приложение.
+            Ленты читаются стандартными средствами Python, ключи не нужны.
+          </li>
+          <li>
+            <strong>Публичный API.</strong> Функция-источник описана в
+            <code>sources.py</code>: верните список вакансий в том же формате
+            и добавьте вызов в <code>perform_update()</code>.
+          </li>
+          <li>
+            <strong>Проверка.</strong> Кнопка «Обновить данные» в шапке
+            запускает все источники, а отчёт по каждому виден в блоке
+            «Статус данных».
+          </li>
+        </ol>
+        <p class="hint">
+          Записи из RSS автоматически помечаются источником и датой
+          обнаружения; дубли отсекаются по паре
+          <code>source + source_id</code>. Пока реальные ленты не заданы,
+          в базе остаются только демонстрационные записи.
+        </p>
+      </article>
+
+      <!-- Что хранится -->
+      <article class="panel panel--wide">
+        <h3 class="panel__title">Что хранится о каждой вакансии</h3>
+        <ul class="field-tags">
+          <li><span>источник</span> демо-файл или адрес ленты</li>
+          <li><span>source_id</span> идентификатор внутри источника — ключ дедупликации</li>
+          <li><span>оригинальная ссылка</span> на публикацию (у демо её нет — так и показываем)</li>
+          <li><span>дата публикации</span> объявлена работодателем</li>
+          <li><span>дата обнаружения</span> когда запись попала к нам</li>
+          <li><span>последняя проверка</span> когда источник перечитывался</li>
+          <li><span>навыки, уровень, формат, зарплата</span> — только то, что опубликовано</li>
+        </ul>
+        <p class="hint">
+          Отсутствующие сведения не додумываются: если зарплата не указана,
+          в интерфейсе показывается «Не указана».
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+{% endblock %}

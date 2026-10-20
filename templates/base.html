@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090d">
+  <meta name="description" content="Signal — AI Job Digest: поиск, мониторинг и анализ вакансий вайб-кодинга, промпт-инжиниринга и смежных AI-направлений.">
+  <title>{% block title %}Signal — AI Job Digest{% endblock %}</title>
+
+  <!-- Шрифты: если интернета нет, сработают системные запасные варианты -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
+</head>
+<body>
+  <!-- Тонкая сетка-фон: деталь «цифрового радара» -->
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <!-- ================= Шапка ================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header__inner">
+      <a class="brand" href="{{ url_for('index') }}" aria-label="Signal — на главную">
+        <span class="brand__mark">
+          <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="" width="30" height="30">
+        </span>
+        <span class="brand__text">
+          <span class="brand__name">Signal</span>
+          <span class="brand__sub">AI Job Digest</span>
+        </span>
+      </a>
+
+      <nav class="nav nav--desktop" aria-label="Основная навигация">
+        <a href="{{ url_for('index') }}#jobs">Лента</a>
+        <a href="{{ url_for('index') }}#digest">Дайджест</a>
+        <a href="{{ url_for('index') }}#sources">Источники</a>
+      </nav>
+
+      <div class="header__status" title="Статус данных">
+        <span class="status-dot {% if mode == 'demo+rss' %}status-dot--live{% else %}status-dot--demo{% endif %}"></span>
+        <span class="status-mode">{% if mode == 'demo+rss' %}ДЕМО + RSS{% else %}ДЕМО{% endif %}</span>
+        <span class="status-time">{{ status_label }}</span>
+      </div>
+
+      <button class="burger" id="burgerBtn" type="button" aria-expanded="false" aria-controls="mobileMenu" aria-label="Открыть меню">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+
+    <!-- Компактное меню для телефонов -->
+    <div class="mobile-menu" id="mobileMenu" hidden>
+      <nav aria-label="Мобильная навигация">
+        <a href="{{ url_for('index') }}#jobs">Лента вакансий</a>
+        <a href="{{ url_for('index') }}#digest">AI-дайджест</a>
+        <a href="{{ url_for('index') }}#sources">Источники</a>
+      </nav>
+      <p class="mobile-menu__status">
+        <span class="status-dot {% if mode == 'demo+rss' %}status-dot--live{% else %}status-dot--demo{% endif %}"></span>
+        <span class="status-time">{{ status_label }}</span>
+      </p>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ================= Подвал ================= -->
+  <footer class="site-footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <span class="brand__name">Signal</span>
+        <p>AI Job Digest — учебный прототип агрегатора AI-вакансий.<br>
+        Демо-записи не являются реальными предложениями работодателей.</p>
+      </div>
+      <nav class="footer__nav" aria-label="Навигация в подвале">
+        <a href="{{ url_for('index') }}#jobs">Лента</a>
+        <a href="{{ url_for('index') }}#digest">Дайджест</a>
+        <a href="{{ url_for('index') }}#sources">Источники</a>
+        <a href="https://github.com" rel="noopener noreferrer" target="_blank">GitHub</a>
+      </nav>
+      <p class="footer__note mono">Режим данных: {% if mode == 'demo+rss' %}демо + RSS{% else %}демонстрационный{% endif %}</p>
+    </div>
+  </footer>
+
+  <!-- ================= Панель подробностей о вакансии ================= -->
+  <div class="drawer" id="jobDrawer" hidden>
+    <div class="drawer__backdrop" data-close-drawer></div>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <header class="drawer__head">
+        <p class="eyebrow">Вакансия</p>
+        <button class="icon-btn" type="button" data-close-drawer aria-label="Закрыть подробности">✕</button>
+      </header>
+      <div class="drawer__body" id="drawerBody"></div>
+    </aside>
+  </div>
+
+  <!-- Всплывающие уведомления -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script>
+    // Данные сервера для клиентского скрипта (направления, статистика)
+    window.SIGNAL_DATA = {
+      directions: {{ directions|tojson }},
+      levels: {{ levels|tojson }},
+      formats: {{ formats|tojson }},
+      employments: {{ employments|tojson }},
+      stats: {{ stats|tojson }},
+      statusLabel: {{ status_label|tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/radar.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
